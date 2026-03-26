@@ -4,6 +4,8 @@
 
 Built for the scenario where large, coordinated trades appear in oil futures, Bitcoin, equities and other instruments shortly *before* a major news event. The tool continuously watches your watchlist, detects volume spikes and sharp price moves, and fires an alarm so you can position yourself accordingly.
 
+Now also includes **five stock strategy tools** derived from the academic paper [*151 Trading Strategies*](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3247865) (Kakushadze & Serur, 2018).
+
 ---
 
 ## Features
@@ -18,6 +20,7 @@ Built for the scenario where large, coordinated trades appear in oil futures, Bi
 | **Multiple alert channels** | Console, e-mail (SMTP), Slack, Telegram, Discord |
 | **Fully configurable** | All thresholds and credentials controlled via environment variables or `.env` |
 | **No API key required** | Uses [yfinance](https://github.com/ranaroussi/yfinance) (Yahoo Finance) — zero sign-up |
+| **Stock strategy tools** | Momentum, Mean Reversion, MA Crossover, Support/Resistance, Pairs Trading |
 
 ---
 
@@ -78,6 +81,63 @@ python -m src.monitor \
    Time     : 2024-06-01 14:32:07 UTC
 ────────────────────────────────────────────────────────────────────────
 ```
+
+---
+
+## Stock strategy tools (from *151 Trading Strategies*)
+
+Five quantitative strategies from Chapter 3 (Stocks) of [SSRN 3247865](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3247865) are implemented in `src/strategies.py`. Each can be used as a standalone screening tool.
+
+### Quick start
+
+```python
+from src.strategies import (
+    momentum_screen,
+    mean_reversion_screen,
+    moving_average_crossover,
+    support_resistance,
+    pairs_trading,
+    run_all_strategies,
+)
+
+# Run all strategies on the default stock watchlist
+results = run_all_strategies()            # uses XOM, CVX, TSLA, AAPL, NVDA, META
+for name, signals in results.items():
+    print(f"\n── {name} ──")
+    for s in signals:
+        print(s)
+
+# Or run individual strategies
+momentum_results = momentum_screen(["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"])
+ma_result = moving_average_crossover("TSLA")
+pair = pairs_trading("XOM", "CVX")
+```
+
+### Strategy overview
+
+| # | Strategy | Paper § | Signal | Key parameter |
+|---|---|---|---|---|
+| 1 | **Price Momentum** | § 3.1 | BUY winners / SELL losers by cumulative return over 12-month formation period (skip 1 month) | `formation_months`, `skip_months` |
+| 2 | **Mean Reversion** | § 3.9 | BUY stocks whose return is below the cluster mean, SELL those above | `lookback_days` (default 21) |
+| 3 | **Moving-Average Crossover** | § 3.12 | BUY on golden cross (MA₁₀ > MA₃₀), SELL on death cross | `short_window`, `long_window` |
+| 4 | **Support & Resistance** | § 3.14 | Pivot = (H+L+C)/3; R = 2·Pivot−L; S = 2·Pivot−H. BUY above pivot, SELL below | Previous day's OHLC |
+| 5 | **Pairs Trading** | § 3.8 | Short the "rich" leg, buy the "cheap" leg of a correlated stock pair | `lookback_days` (default 60) |
+
+### Where does the data come from?
+
+All data — for both the existing anomaly monitor **and** the new strategy tools — is fetched from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) Python package. No API key or account is required.
+
+| Use case | Data fetched | yfinance call | Typical look-back |
+|---|---|---|---|
+| **Volume spike detection** (`detectors.py`) | Daily OHLCV bars | `Ticker.history(period="60d", interval="1d")` | 60 days |
+| **Price velocity detection** (`detectors.py`) | Intraday 5-min bars | `Ticker.history(period="1d", interval="5m")` | 1 day (current session) |
+| **Momentum screen** (`strategies.py`) | Daily close prices | `Ticker.history(period="…", interval="1d")` | ~13 months (12 + 1 skip) |
+| **Mean reversion** (`strategies.py`) | Daily close prices | `Ticker.history(period="…", interval="1d")` | ~21 trading days |
+| **MA crossover** (`strategies.py`) | Daily close prices | `Ticker.history(period="…", interval="1d")` | ~90 trading days |
+| **Support & resistance** (`strategies.py`) | Daily OHLC bars | `Ticker.history(period="5d", interval="1d")` | 2 days (prev + current) |
+| **Pairs trading** (`strategies.py`) | Daily close prices | `Ticker.history(period="…", interval="1d")` | 60 trading days |
+
+**Important:** yfinance retrieves data from Yahoo Finance's public endpoints. Data is delayed (typically 15 min for US equities). Crypto pairs (e.g. `BTC-USD`) are available 24/7. Futures symbols use Yahoo's convention (e.g. `CL=F` for WTI Crude).
 
 ---
 
@@ -167,10 +227,13 @@ Become-an-insider/
 │   ├── config.py      # All configuration (env-var driven)
 │   ├── detectors.py   # Volume spike, price velocity & cross-asset detection
 │   ├── alerts.py      # Alert formatting & delivery (console/email/Slack/Telegram/Discord)
-│   └── monitor.py     # Main monitoring loop + CLI entry-point
+│   ├── monitor.py     # Main monitoring loop + CLI entry-point
+│   └── strategies.py  # Stock strategy tools (momentum, mean-reversion, MA, S/R, pairs)
 ├── tests/
 │   ├── test_detectors.py
-│   └── test_alerts.py
+│   ├── test_alerts.py
+│   └── test_strategies.py
+├── ssrn-3247865.pdf   # "151 Trading Strategies" (Kakushadze & Serur, 2018)
 ├── .env.example       # Template for environment variables
 └── requirements.txt
 ```
