@@ -449,11 +449,12 @@ def pairs_trading(
     dem_b = r_b - mean_r
 
     # Compute correlation over the lookback window for informational purposes
+    returns_a = df_a["Close"].iloc[-(lookback_days + 1):].pct_change().dropna()
+    returns_b = df_b["Close"].iloc[-(lookback_days + 1):].pct_change().dropna()
+    min_len = min(len(returns_a), len(returns_b), lookback_days)
     aligned = pd.DataFrame({
-        "a": df_a["Close"].iloc[-(lookback_days + 1):].pct_change().dropna().values[
-             :lookback_days],
-        "b": df_b["Close"].iloc[-(lookback_days + 1):].pct_change().dropna().values[
-             :lookback_days],
+        "a": returns_a.values[:min_len],
+        "b": returns_b.values[:min_len],
     })
     corr = float(aligned["a"].corr(aligned["b"])) if len(aligned) > 1 else float("nan")
 
